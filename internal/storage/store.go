@@ -39,3 +39,9 @@ func (s *KVStore) Delete(key string) {
 
 	delete(s.store, key)
 }
+
+// RecoverFromWAL loads the saved data from the WAL into the in-memory store
+func (s *KVStore) RecoverFromWAL(wal *WAL) error {
+	// Because both files are in the 'storage' packae, we can access s.store
+	return wal.Replay(s.store)
+}
