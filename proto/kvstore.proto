@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package kvstore;
+
+option go_package = "github.com/ski-akash/dist-kv-store/proto";
+
+// The core Key-Value Store service
+service KVStore {
+  rpc Put (PutRequest) returns (PutResponse);
+  rpc Get (GetRequest) returns (GetResponse);
+  rpc Delete (DeleteRequest) returns (DeleteResponse);
+}
+
+message PutRequest {
+  string key = 1;
+  bytes value = 2; // Using bytes so we can store any type of data
+}
+
+message PutResponse {
+  bool success = 1;
+}
+
+message GetRequest {
+  string key = 1;
+}
+
+message GetResponse {
+  bytes value = 1;
+  bool found = 2; // Helps differentiate between a nil value and a missing key
+}
+
+message DeleteRequest {
+  string key = 1;
+}
+
+message DeleteResponse {
+  bool success = 1;
+}
