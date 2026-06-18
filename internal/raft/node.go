@@ -21,6 +21,7 @@ const (
 
 // Node represents a single Raft consensus server
 type Node struct {
+	pb.UnimplementedRaftNodeServer
 	mu sync.Mutex
 
 	// Basic state
@@ -158,4 +159,12 @@ func (rn *Node) startElection() {
 			}
 		}(peer) // Pass peer variable into goroutine
 	}
+}
+
+// AddClient securely adds a new peer connection to the node's client map
+func (rn *Node) AddClient(peerID string, client pb.RaftNodeClient) {
+	rn.mu.Lock()
+	defer rn.mu.Unlock()
+
+	rn.clients[peerID] = client
 }
