@@ -1,6 +1,7 @@
 package raft
 
 import (
+	"context"
 	"log"
 	"math/rand"
 	"sync"
@@ -23,9 +24,10 @@ type Node struct {
 	mu sync.Mutex
 
 	// Basic state
-	id    string
-	peers []string // Addresses of all other nodes in the cluster
-	state NodeState
+	id      string
+	peers   []string // Addresses of all other nodes in the cluster
+	clients map[string]pb.RaftNodeClient
+	state   NodeState
 
 	// Persistent state on all servers (updated before responding to RPCs)
 	currentTerm int32
@@ -45,6 +47,7 @@ func NewNode(id string, peers []string) *Node {
 	rn := &Node{
 		id:          id,
 		peers:       peers,
+		clients:     make(map[string]pb.RaftNodeClient),
 		state:       StateFollower,
 		currentTerm: 0,
 		votedFor:    "",
@@ -93,7 +96,7 @@ func (rn *Node) randomTimeout() time.Duration {
 	return time.Duration(150+rand.Intn(150)) * time.Millisecond
 }
 
-// startElection triggers the transition from Follower to Candidate
+// startElection triggers the transition from Follower to Candidate and asks for votes
 func (rn *Node) startElection() {
 	rn.mu.Lock()
 	rn.state = StateCandidate
@@ -104,5 +107,55 @@ func (rn *Node) startElection() {
 
 	log.Printf("Node %s becomes Candidate, starting election for term %d", rn.id, savedTerm)
 
-	
+	// 1. Count ourselves as 1 vote
+	votesReceived := 1
+	var voteMu sync.Mutex // Protects our votesReceived counter
+
+	// 2. Send RequestVote to all peers concurrently
+	for _, peer := range rn.peers {
+		go func(peerID string) {
+			rn.mu.Lock()
+			client, ok := rn.clients[peerID]
+			rn.mu.Unlock()
+
+			if !ok {
+				return // Client not connected yet
+			}
+
+			// Create the RPC request
+			req := &pb.VoteRequest{
+				Term:        savedTerm,
+				CandidateId: rn.id,
+			}
+
+			// Fire the network call
+			resp, err := client.RequestVote(context.Background(), req)
+			if err != nil {
+				log.Printf("Failed to reach peer %s: %v", peerID, err)
+				return
+			}
+
+			// Process the response safely
+			rn.mu.Lock()
+			defer rn.mu.Unlock()
+
+			// If the peer has a higher term, we must step down immediately
+			if resp.Term > rn.currentTerm {
+				rn.becomeFollower(resp.Term)
+				return
+			}
+
+			// If we are still a candidate, still in the same term, and got the vote
+			if rn.state == StateCandidate && rn.currentTerm == savedTerm && resp.VoteGranted {
+				voteMu.Lock()
+				votesReceived++
+				// Check if we achieved a quorum (majority)
+				if votesReceived > (len(rn.peers)+1)/2 {
+					rn.becomeLeader()
+					// To prevent winning multiple times, we step out of Candidate state (handled inside becomeLeader)
+				}
+				voteMu.Unlock()
+			}
+		}(peer) // Pass peer variable into goroutine
+	}
 }
