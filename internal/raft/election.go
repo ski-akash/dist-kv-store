@@ -49,4 +49,6 @@ func (rn *Node) becomeLeader() {
 	rn.state = StateLeader
 	log.Printf("🏆 Node %s HAS WON THE ELECTION AND IS NOW THE LEADER! 🏆", rn.id)
 
+	// Start broadcasting heartbeats immediately to suppress other elections!
+	go rn.startHeartbeats()
 }
