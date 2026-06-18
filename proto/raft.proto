@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package raft;
+
+option go_package = "github.com/ski-akash/dist-kv-store/proto";
+
+// The Raft Consensus service
+service RaftNode {
+  // Invoked by candidates to gather votes
+  rpc RequestVote (VoteRequest) returns (VoteResponse);
+  
+  // Invoked by leader to replicate log entries and send heartbeats
+  rpc AppendEntries (AppendRequest) returns (AppendResponse);
+}
+
+// --- ELECTION MESSAGES ---
+
+message VoteRequest {
+  int32 term = 1;           // The candidate's current term
+  string candidateId = 2;   // The candidate requesting the vote
+  int32 lastLogIndex = 3;   // Index of candidate's last log entry
+  int32 lastLogTerm = 4;    // Term of candidate's last log entry
+}
+
+message VoteResponse {
+  int32 term = 1;           // Current term, for candidate to update itself
+  bool voteGranted = 2;     // True means candidate received vote
+}
+
+// --- REPLICATION MESSAGES ---
+
+message RaftLogEntry {
+  int32 term = 1;           // The term when this entry was received
+  string operation = 2;     // "PUT" or "DELETE"
+  string key = 3;
+  bytes value = 4;
+}
+
+message AppendRequest {
+  int32 term = 1;                   // Leader's term
+  string leaderId = 2;              // So followers can redirect clients
+  int32 prevLogIndex = 3;           // Index of log entry immediately preceding new ones
+  int32 prevLogTerm = 4;            // Term of prevLogIndex entry
+  repeated RaftLogEntry entries = 5; // Log entries to store (empty for heartbeat)
+  int32 leaderCommit = 6;           // Leader's commitIndex
+}
+
+message AppendResponse {
+  int32 term = 1;           // Current term, for leader to update itself
+  bool success = 2;         // True if follower contained entry matching prevLogIndex and prevLogTerm
+}
